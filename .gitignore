@@ -1,0 +1,12 @@
+obj/
+Debug/
+Release/
+**.user
+**.suo
+**.dat
+**.exe.config
+**.vshost.
+**.sdf
+**.opensdf
+**.vc.db
+**.opendb

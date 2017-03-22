@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace DiskListSample
+namespace DiskList
 {
     internal class DiskListPart: IDisposable
     {

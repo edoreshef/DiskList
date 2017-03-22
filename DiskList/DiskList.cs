@@ -5,14 +5,13 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 
-namespace DiskListSample
+namespace DiskList
 {
-    public class DiskList
+    public class DiskList: IDisposable
     {
         private ReaderWriterLock m_PartsLock = new ReaderWriterLock();
         private List<DiskListPart> m_Parts = new List<DiskListPart>();
         private readonly FileAccess m_FileAccess;
-        private int m_PartCapacity = 0xffff / 8 * 2 - 2; // as a default, compute part capacity so index record is 64k
 
         // FilePath related
         private int    m_Filename_NextPartIndex;
@@ -22,29 +21,17 @@ namespace DiskListSample
         private string m_Filename_SearchPattern;
         private FileSystemWatcher m_FileSystemWatcher;
 
-        public int PartCapacity
-        {
-            get { return m_PartCapacity; }
-            set
-            {
-                if (value == m_PartCapacity)
-                    return;
-
-                if (m_Parts.Count != 0)
-                    throw new Exception("Can change part capacity for non-empty list");
-
-                m_PartCapacity = value;
-            }
-        }
+        public int PartCapacity { get; private set; }
 
         public long Count { get; private set; }
 
         public long FirstAvailableIndex { get; private set; }
 
-        public DiskList(string listFilename, FileAccess fileAccess)
+        public DiskList(string listFilename, FileAccess fileAccess, int defaultPartCapacity = 1024)
         {
             // Store parameters
             m_FileAccess = fileAccess;
+            PartCapacity = defaultPartCapacity;
 
             // Decode filename
             var filenameMatch = Regex.Match(Path.GetFullPath(listFilename), @"(.*-)(\d+)(.[^-\n]*)");
@@ -114,8 +101,8 @@ namespace DiskListSample
                 if (partsToLoad.Count > 0)
                 {
                     // Ensure capacity is identical for all parts
-                    m_PartCapacity = (int)partsToLoad.First().Value.MaxCapacity;
-                    if (partsToLoad.Any(t => t.Value.MaxCapacity != m_PartCapacity))
+                    PartCapacity = (int)partsToLoad.First().Value.MaxCapacity;
+                    if (partsToLoad.Any(t => t.Value.MaxCapacity != PartCapacity))
                         throw new Exception("All parts must have identical capatiy");
 
                     // Create part list
@@ -254,6 +241,12 @@ namespace DiskListSample
             {
                 m_PartsLock.ReleaseReaderLock();
             }
+        }
+
+        public void Dispose()
+        {
+            m_FileSystemWatcher?.Dispose();
+            m_Parts.ForEach(t => t.Dispose());
         }
     }
 }
