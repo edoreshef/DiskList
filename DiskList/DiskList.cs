@@ -21,6 +21,10 @@ namespace DiskList
         private string m_Filename_SearchPattern;
         private FileSystemWatcher m_FileSystemWatcher;
 
+        public delegate void ValuesRemovedNotification(object sender, long fromIndex, long records);
+
+        public event ValuesRemovedNotification ValuesRemoved;
+
         public int PartCapacity { get; private set; }
 
         public long Count { get; private set; }
@@ -55,6 +59,76 @@ namespace DiskList
             m_FileSystemWatcher.Created += (sender, args) => RebuildPartList();
             m_FileSystemWatcher.NotifyFilter = NotifyFilters.FileName;
             m_FileSystemWatcher.EnableRaisingEvents = true;
+
+            // Start delete pending check thread
+            new Thread(DeletePendingBackgroundCheck) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
+        }
+
+        private void DeletePendingBackgroundCheck()
+        {
+            while (true)
+            {
+                Thread.Sleep(500);
+                CheckDeletePending();
+            }
+        }
+
+        public void CheckDeletePending()
+        { 
+            try
+            {
+                m_PartsLock.AcquireReaderLock(int.MaxValue);
+
+                // Create a delete pending list
+                var deletePending = new List<int>();
+                for (var iPart = 0; iPart < m_Parts.Count; iPart++)
+                {
+                    // Ignore missing parts
+                    if (m_Parts[iPart] == null)
+                        continue;
+
+                    // try to open file, delete pending file will not open
+                    try
+                    {
+                        using (new FileStream(m_Parts[iPart].FilePath, FileMode.OpenOrCreate, FileAccess.Read, FileShare.Delete | FileShare.ReadWrite)) ;
+                    }
+                    catch (UnauthorizedAccessException e)
+                    {
+                        deletePending.Add(iPart);
+                    }
+                }
+
+                // Do we need to remove files?
+                if (deletePending.Count > 0)
+                {
+                    // Upgrade lock
+                    var lockCookie = m_PartsLock.UpgradeToWriterLock(int.MaxValue);
+                    try
+                    {
+                        // Release files
+                        foreach (var iPart in deletePending)
+                        {
+                            // Notify on part removal
+                            ValuesRemoved?.Invoke(this, m_Parts[iPart].StartIndex, m_Parts[iPart].RecordCount);
+
+                            // Release part
+                            m_Parts[iPart].Dispose();
+                            m_Parts[iPart] = null;
+                        }
+
+                        // Rebuild parts list
+                        RebuildPartList();
+                    }
+                    finally
+                    {
+                        m_PartsLock.DowngradeFromWriterLock(ref lockCookie);
+                    }
+                }
+            }
+            finally
+            {
+                m_PartsLock.ReleaseReaderLock();
+            }
         }
 
         private void RebuildPartList()
@@ -73,7 +147,7 @@ namespace DiskList
                 var prevParts = m_Parts.Where(t => t != null).ToDictionary(t => t.PartIndex);
            
                 // Create parts-to-load dictionary
-                var partsToLoad = new Dictionary<int, DiskListPart>();
+                var newPartsList = new Dictionary<int, DiskListPart>();
                 foreach (var partFile in indexToFile)
                 {
                     // try to use existing part
@@ -89,29 +163,34 @@ namespace DiskList
                         part = new DiskListPart(partFile.Value, m_FileAccess) {PartIndex = partFile.Key};
 
                     // Add to index list
-                    partsToLoad.Add(partFile.Key, part);
+                    newPartsList.Add(partFile.Key, part);
                 }
 
                 // Cleanup deleted item
                 foreach (var partToDelete in prevParts)
+                {
+                    // Notify on part removal
+                    ValuesRemoved?.Invoke(this, partToDelete.Value.StartIndex, partToDelete.Value.RecordCount);
+
                     partToDelete.Value.Dispose();
+                }
                 prevParts.Clear();
 
                 // Things to do on loading of an existing list
-                if (partsToLoad.Count > 0)
+                if (newPartsList.Count > 0)
                 {
                     // Ensure capacity is identical for all parts
-                    PartCapacity = (int)partsToLoad.First().Value.MaxCapacity;
-                    if (partsToLoad.Any(t => t.Value.MaxCapacity != PartCapacity))
+                    PartCapacity = (int)newPartsList.First().Value.MaxCapacity;
+                    if (newPartsList.Any(t => t.Value.MaxCapacity != PartCapacity))
                         throw new Exception("All parts must have identical capatiy");
 
                     // Create part list
-                    var firstPartIndex = partsToLoad.Keys.Min();
-                    var lastPartIndex = partsToLoad.Keys.Max();
+                    var firstPartIndex = newPartsList.Keys.Min();
+                    var lastPartIndex = newPartsList.Keys.Max();
                     var count = lastPartIndex - firstPartIndex + 1;
                     var newPartList = new List<DiskListPart>(count);
                     while (newPartList.Count < count) newPartList.Add(null);
-                    foreach (var item in partsToLoad)
+                    foreach (var item in newPartsList)
                         newPartList[item.Key - firstPartIndex] = item.Value;
 
                     // Replace part list
