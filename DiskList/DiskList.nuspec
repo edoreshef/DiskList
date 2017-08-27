@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package >
+  <metadata>
+    <id>DiskList</id>
+    <version>1.0.1</version>
+    <authors>Edo Reshef</authors>
+    <owners>Edo Reshef</owners>
+    <licenseUrl>https://github.com/edoreshef/DiskList/blob/master/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/edoreshef/DiskList</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>A disk persistent List&lt;byte[]&gt;</description>
+    <releaseNotes>First nuget release</releaseNotes>
+    <copyright>Copyright 2017 Edo Reshef</copyright>
+  </metadata>
+</package>

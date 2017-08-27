@@ -31,8 +31,7 @@ namespace DiskListSample
             Console.WriteLine("Testing fragmentation:");
             Console.WriteLine("(A=add P=print M=measure)");
 
-            var list = new DiskList("test1-0000.data", FileAccess.ReadWrite);
-            list.PartCapacity = 2;
+            var list = new DiskList.DiskList("test1-0000.data", FileAccess.ReadWrite);
 
             while (true)
             {
@@ -56,7 +55,7 @@ namespace DiskListSample
                 if (key.Key == ConsoleKey.M)
                 {
                     // Create a diffrent list for performance test
-                    var list2 = new DiskList("test2-0000.data", FileAccess.ReadWrite);
+                    var list2 = new DiskList.DiskList("test2-0000.data", FileAccess.ReadWrite);
 
                     // Stress write
                     var buf = new byte[1024*1024];
