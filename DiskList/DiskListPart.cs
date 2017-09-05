@@ -5,6 +5,8 @@ namespace DiskList
 {
     internal class DiskListPart: IDisposable
     {
+        public class PartNotReady : Exception { }
+
         public int    PartIndex;
         public string FilePath { get; }
         public bool IsWritable { get; }
@@ -32,33 +34,52 @@ namespace DiskList
         {
             FilePath = filePath;
 
-            // Open streams
-            IsWritable = (fileAccess & FileAccess.Write) != 0;
-            var fileShare = FileShare.Delete | (IsWritable ? FileShare.ReadWrite : FileShare.Read);
-            DataStream = new FileStream(filePath, FileMode.OpenOrCreate, fileAccess, fileShare);
-            Reader = new BinaryReader(DataStream);
-            Writer = new BinaryWriter(DataStream);
+            try
+            {
+                // Open streams
+                IsWritable = (fileAccess & FileAccess.Write) != 0;
+                var fileShare = FileShare.Delete | (IsWritable ? FileShare.ReadWrite : FileShare.Read);
+                DataStream = new FileStream(filePath, FileMode.OpenOrCreate, fileAccess, fileShare);
+                Reader = new BinaryReader(DataStream);
+                Writer = new BinaryWriter(DataStream);
 
-            // Read index size
-            DataStream.Position = 0;
-            MaxCapacity = Reader.ReadInt64();
-            StartIndex  = Reader.ReadInt64();
+                // Make sure we have header
+                if (DataStream.Length < 4)
+                    throw new PartNotReady();
 
-            // Read index data
-            var index = new byte[MaxCapacity * 8 * 2];
-            DataStream.Read(index, 0, index.Length);
-            Index = new long[MaxCapacity * 2];
-            Buffer.BlockCopy(index, 0, Index, 0, index.Length);
+                // Read index size
+                DataStream.Position = 0;
+                MaxCapacity = Reader.ReadInt64();
+                StartIndex  = Reader.ReadInt64();
 
-            // Scan for records count
-            for (var i = (int)(MaxCapacity - 1) * 2; i >= 0; i-= 2)
-                if (Index[i] != 0)
-                {
-                    RecordCount = i / 2 + 1;
-                    break;
-                }
+                // Make sure we have header
+                if (DataStream.Length < 4 + MaxCapacity * 8 * 2)
+                    throw new PartNotReady();
 
-            DataStream.Seek(0, SeekOrigin.End);
+                // Read index data
+                var index = new byte[MaxCapacity * 8 * 2];
+                DataStream.Read(index, 0, index.Length);
+                Index = new long[MaxCapacity * 2];
+                Buffer.BlockCopy(index, 0, Index, 0, index.Length);
+
+                // Scan for records count
+                for (var i = (int)(MaxCapacity - 1) * 2; i >= 0; i-= 2)
+                    if (Index[i] != 0)
+                    {
+                        RecordCount = i / 2 + 1;
+                        break;
+                    }
+
+                DataStream.Seek(0, SeekOrigin.End);
+            }
+            catch (Exception ex)
+            {
+                // On error close everthing
+                Reader?.Close();
+                Writer?.Close();
+                DataStream?.Close();
+                throw;
+            }
         }
 
         public void Dispose()

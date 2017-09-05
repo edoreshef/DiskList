@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
-using System.Net.Mime;
 using System.Reflection;
 using System.Text;
 
@@ -50,8 +49,10 @@ namespace DiskListSample
                 if (key.Key == ConsoleKey.P)
                     for (var i = 0; i < list.Count; i++)
                     {
-                        var item = list[i];
-                        Console.WriteLine(" {0}: {1}", i, (item == null ? "null" : Encoding.UTF8.GetString(item)));
+                        if (list.IsIndexExists(i))
+                            Console.WriteLine($" {i}: {Encoding.UTF8.GetString(list[i])}");
+                        else
+                            Console.WriteLine($" {i}: NA");
                     }
 
                 if (key.Key == ConsoleKey.O)

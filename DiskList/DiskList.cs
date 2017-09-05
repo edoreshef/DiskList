@@ -150,20 +150,27 @@ namespace DiskList
                 var newPartsList = new Dictionary<int, DiskListPart>();
                 foreach (var partFile in indexToFile)
                 {
-                    // try to use existing part
-                    DiskListPart part = null;
-                    if (prevParts.ContainsKey(partFile.Key))
+                    try
                     {
-                        part = prevParts[partFile.Key];
-                        prevParts.Remove(partFile.Key);
+                        // try to use existing part
+                        DiskListPart part = null;
+                        if (prevParts.ContainsKey(partFile.Key))
+                        {
+                            part = prevParts[partFile.Key];
+                            prevParts.Remove(partFile.Key);
+                        }
+
+                        // Create if not existed before
+                        if (part == null)
+                            part = new DiskListPart(partFile.Value, m_FileAccess) {PartIndex = partFile.Key};
+
+                        // Add to index list
+                        newPartsList.Add(partFile.Key, part);
                     }
-
-                    // Create if not existed before
-                    if (part == null)
-                        part = new DiskListPart(partFile.Value, m_FileAccess) {PartIndex = partFile.Key};
-
-                    // Add to index list
-                    newPartsList.Add(partFile.Key, part);
+                    catch (DiskListPart.PartNotReady)
+                    {
+                        // Part is not ready yet, ignore part
+                    }
                 }
 
                 // Cleanup deleted item
@@ -260,6 +267,40 @@ namespace DiskList
 
                 // Update count
                 Count++;
+            }
+            finally
+            {
+                m_PartsLock.ReleaseReaderLock();
+            }
+        }
+
+        public bool IsIndexExists(long index)
+        {
+            try
+            {
+                // Make sure m_Parts isn't chaning
+                m_PartsLock.AcquireReaderLock(int.MaxValue);
+
+                // Empty array?
+                if (m_Parts.Count == 0)
+                    return false;
+
+                // Deleted part?
+                if (index < m_Parts[0].StartIndex)
+                    return false;
+
+                // compute index relative to m_Parts
+                var startOffset = m_Parts[0].StartIndex;
+                var partIndex = (index - startOffset) / m_Parts[0].MaxCapacity;
+
+                // Make sure part exists
+                if (partIndex >= m_Parts.Count)
+                    return false;
+                if (m_Parts[(int)partIndex] == null)
+                    return false;
+
+                // Get and return data
+                return true;
             }
             finally
             {
