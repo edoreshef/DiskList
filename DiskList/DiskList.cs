@@ -344,6 +344,30 @@ namespace DiskList
                     m_PartsLock.ReleaseReaderLock();
                 }
             }
+
+            set
+            {
+                try
+                {
+                    // Make sure m_Parts isn't chaning
+                    m_PartsLock.AcquireReaderLock(int.MaxValue);
+
+                    // Check if we should create list from scratch starting at current index
+                    if (m_Parts.Count == 0)
+                        Count = index;
+
+                    // Make sure index is sequentail
+                    else if (Count != index)
+                        throw new Exception($"Unable to append data at index {index} as next index should be {Count}");
+
+                    // Add value to list
+                    Add(value);
+                }
+                finally
+                {
+                    m_PartsLock.ReleaseReaderLock();
+                }
+            }
         }
 
         public void Flush()
